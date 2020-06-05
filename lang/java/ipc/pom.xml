@@ -173,6 +173,11 @@
         <artifactId>javax.servlet-api</artifactId>
         <scope>provided</scope>
     </dependency>
+    <dependency>
+	  <groupId>org.easymock</groupId>
+	  <artifactId>easymock</artifactId>
+	  <scope>test</scope>
+	</dependency>
     <!-- javax.annotation-api dependency must be explicit for forward compatibility (Java > 9) -->
     <dependency>
       <groupId>javax.annotation</groupId>

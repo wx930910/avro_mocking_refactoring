@@ -203,6 +203,7 @@
 
 
   <dependencies>
+  
     <dependency>
       <groupId>${project.groupId}</groupId>
       <artifactId>avro</artifactId>
