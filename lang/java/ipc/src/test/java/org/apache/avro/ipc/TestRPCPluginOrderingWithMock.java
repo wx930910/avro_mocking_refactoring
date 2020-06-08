@@ -9,59 +9,98 @@ import org.apache.avro.ipc.specific.SpecificResponder;
 import org.apache.avro.test.Mail;
 import org.apache.avro.test.Message;
 import org.easymock.EasyMock;
-import org.junit.Before;
 import org.junit.Test;
 
 public class TestRPCPluginOrderingWithMock {
 	private static AtomicInteger orderCounter = new AtomicInteger();
-	private RPCPlugin mockRPCPlugin;
 
-	@Before
-	public void setup() {
-		this.mockRPCPlugin = EasyMock.createNiceMock(RPCPlugin.class);
-		this.mockRPCPlugin.clientStartConnect(EasyMock.anyObject(RPCContext.class));
-		EasyMock.expectLastCall().andAnswer(() -> {
-			return orderCounter.getAndIncrement();
-		});
-		// EasyMock.expect(this.mockRPCPlugin.clientStartConnect(EasyMock.anyObject(RPCContext.class)));
-		this.mockRPCPlugin.clientStartConnect(EasyMock.anyObject(RPCContext.class));
-		// EasyMock.expectLastCall().andAnswer(answer);
-	}
+	public class MockOrderPlugin {
 
-	public class OrderPlugin extends RPCPlugin {
+		public RPCPlugin MockedOrderPlugin;
 
-		public void clientStartConnect(RPCContext context) {
-			assertEquals(0, orderCounter.getAndIncrement());
+		public MockOrderPlugin() {
+			this.MockedOrderPlugin = EasyMock.partialMockBuilder(RPCPlugin.class).addMockedMethod("clientStartConnect", RPCContext.class)
+					.addMockedMethod("clientSendRequest", RPCContext.class).addMockedMethod("clientReceiveResponse", RPCContext.class)
+					.addMockedMethod("serverConnecting", RPCContext.class).addMockedMethod("clientFinishConnect", RPCContext.class)
+					.addMockedMethod("serverReceiveRequest", RPCContext.class).addMockedMethod("serverSendResponse", RPCContext.class).createMock();
+			mockClientStartConnect();
+			mockClientSendRequest();
+			mockClientReceiveResponse();
+			mockClientFinishConnect();
+			mockServerConnecting();
+			mockServerReceiveRequest();
+			mockServerSendResponse();
+			EasyMock.replay(this.MockedOrderPlugin);
 		}
 
-		public void clientSendRequest(RPCContext context) {
-			assertEquals(1, orderCounter.getAndIncrement());
+		private void mockClientStartConnect() {
+			this.MockedOrderPlugin.clientStartConnect(EasyMock.anyObject(RPCContext.class));
+			EasyMock.expectLastCall().andAnswer(() -> {
+				System.out.println("Client Start Connect: " + orderCounter.get());
+				assertEquals(0, orderCounter.getAndIncrement());
+				return null;
+			}).anyTimes();
 		}
 
-		public void clientReceiveResponse(RPCContext context) {
-			assertEquals(6, orderCounter.getAndIncrement());
+		private void mockClientSendRequest() {
+			this.MockedOrderPlugin.clientSendRequest(EasyMock.anyObject(RPCContext.class));
+			EasyMock.expectLastCall().andAnswer(() -> {
+				System.out.println("Client Send Request: " + orderCounter.get());
+				assertEquals(1, orderCounter.getAndIncrement());
+				return null;
+			}).anyTimes();
 		}
 
-		public void clientFinishConnect(RPCContext context) {
-			assertEquals(5, orderCounter.getAndIncrement());
+		private void mockClientReceiveResponse() {
+			this.MockedOrderPlugin.clientReceiveResponse(EasyMock.anyObject(RPCContext.class));
+			EasyMock.expectLastCall().andAnswer(() -> {
+				System.out.println("Client Receive Response: " + orderCounter.get());
+				assertEquals(6, orderCounter.getAndIncrement());
+				return null;
+			}).anyTimes();
 		}
 
-		public void serverConnecting(RPCContext context) {
-			assertEquals(2, orderCounter.getAndIncrement());
+		private void mockClientFinishConnect() {
+			this.MockedOrderPlugin.clientFinishConnect(EasyMock.anyObject(RPCContext.class));
+			EasyMock.expectLastCall().andAnswer(() -> {
+				System.out.println("Client Finish Connect: " + orderCounter.get());
+				assertEquals(5, orderCounter.getAndIncrement());
+				return null;
+			}).anyTimes();
 		}
 
-		public void serverReceiveRequest(RPCContext context) {
-			assertEquals(3, orderCounter.getAndIncrement());
+		private void mockServerConnecting() {
+			this.MockedOrderPlugin.serverConnecting(EasyMock.anyObject(RPCContext.class));
+			EasyMock.expectLastCall().andAnswer(() -> {
+				System.out.println("Server Start Connect: " + orderCounter.get());
+				assertEquals(2, orderCounter.getAndIncrement());
+				return null;
+			}).anyTimes();
 		}
 
-		public void serverSendResponse(RPCContext context) {
-			assertEquals(4, orderCounter.getAndIncrement());
+		private void mockServerReceiveRequest() {
+			this.MockedOrderPlugin.serverReceiveRequest(EasyMock.anyObject(RPCContext.class));
+			EasyMock.expectLastCall().andAnswer(() -> {
+				System.out.println("Server Receive Request: " + orderCounter.get());
+				assertEquals(3, orderCounter.getAndIncrement());
+				return null;
+			}).anyTimes();
 		}
+
+		private void mockServerSendResponse() {
+			this.MockedOrderPlugin.serverSendResponse(EasyMock.anyObject(RPCContext.class));
+			EasyMock.expectLastCall().andAnswer(() -> {
+				System.out.println("Server Send Response: " + orderCounter.get());
+				assertEquals(4, orderCounter.getAndIncrement());
+				return null;
+			}).anyTimes();
+		}
+
 	}
 
 	@Test
 	public void testRpcPluginOrdering() throws Exception {
-		OrderPlugin plugin = new OrderPlugin();
+		RPCPlugin plugin = new MockOrderPlugin().MockedOrderPlugin;
 
 		SpecificResponder responder = new SpecificResponder(Mail.class, new TestMailImpl());
 		SpecificRequestor requestor = new SpecificRequestor(Mail.class, new LocalTransceiver(responder));
