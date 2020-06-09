@@ -30,47 +30,70 @@ public class TestCircularReferencesWithMock {
 	@Rule
 	public TemporaryFolder temp = new TemporaryFolder();
 
+	private static Map<LogicalType, MockReference> mockReferenceMap = new HashMap<>();
+
 	/**
 	 * Mocking First Class Reference Since it contains final fields, it may mock
 	 * by combining EasyMock with PowerMock, will catch up it later.
 	 */
-	public static class MockLogicalType {
+	public static class MockReference {
 		public LogicalType MockedLogicalType;
 		private static final String REFERENCE = "reference";
 		private static final String REF_FIELD_NAME = "ref-field-name";
 
 		private final String refFieldName;
 
-		public MockLogicalType(String refFieldName) {
-			MockedLogicalType = EasyMock.partialMockBuilder(LogicalType.class).withConstructor(String.class).withArgs(REFERENCE).createMock();
+		public MockReference(String refFieldName) {
+			MockedLogicalType = EasyMock.partialMockBuilder(LogicalType.class).withConstructor(String.class).withArgs(REFERENCE)
+					.addMockedMethod("addToSchema", Schema.class).addMockedMethod("getName").addMockedMethod("validate", Schema.class).createMock();
 			this.refFieldName = refFieldName;
 			MockAddToSchema();
+			MockGetName();
+			mockValidate();
+			EasyMock.replay(this.MockedLogicalType);
+			mockReferenceMap.put(MockedLogicalType, this);
 		}
 
-		public MockLogicalType(Schema schema) {
-			MockedLogicalType = EasyMock.partialMockBuilder(LogicalType.class).withConstructor(String.class).withArgs(REFERENCE).createMock();
+		public MockReference(Schema schema) {
+			MockedLogicalType = EasyMock.partialMockBuilder(LogicalType.class).withConstructor(String.class).withArgs(REFERENCE)
+					.addMockedMethod("addToSchema", Schema.class).addMockedMethod("getName").addMockedMethod("validate", Schema.class).createMock();
 			this.refFieldName = schema.getProp(REF_FIELD_NAME);
 			MockAddToSchema();
+			MockGetName();
+			mockValidate();
+			EasyMock.replay(this.MockedLogicalType);
+			mockReferenceMap.put(MockedLogicalType, this);
 		}
 
 		private void MockAddToSchema() {
-			Capture<Schema> addToSchemaMethodArg1 = EasyMock.newCapture();
-			EasyMock.expect(MockedLogicalType.addToSchema(EasyMock.capture(addToSchemaMethodArg1))).andAnswer(new IAnswer<Schema>() {
+			EasyMock.expect(MockedLogicalType.addToSchema(EasyMock.anyObject(Schema.class))).andAnswer(new IAnswer<Schema>() {
 				@Override
 				public Schema answer() {
-					MockedLogicalType.addToSchema(addToSchemaMethodArg1.getValue());
-					addToSchemaMethodArg1.getValue().addProp(REF_FIELD_NAME, refFieldName);
-					return addToSchemaMethodArg1.getValue();
+					Schema schema = EasyMock.getCurrentArgument(0);
+					MockedLogicalType.addToSchema(schema);
+					return schema;
 				}
 			}).anyTimes();
 		}
 
 		private void MockGetName() {
-			EasyMock.expect(MockedLogicalType.getName()).andReturn(REFERENCE);
+			EasyMock.expect(MockedLogicalType.getName()).andReturn(REFERENCE).anyTimes();
 		}
 
-		private String getRefFieldName() {
+		public String getRefFieldName() {
 			return this.refFieldName;
+		}
+
+		private void mockValidate() {
+			this.MockedLogicalType.validate(EasyMock.anyObject(Schema.class));
+			EasyMock.expectLastCall().andAnswer(() -> {
+				Schema schema = EasyMock.getCurrentArgument(0);
+				this.MockedLogicalType.validate(schema);
+				if (schema.getField(refFieldName) == null) {
+					throw new IllegalArgumentException("Invalid field name for reference field: " + refFieldName);
+				}
+				return null;
+			}).anyTimes();
 		}
 
 	}
@@ -130,13 +153,13 @@ public class TestCircularReferencesWithMock {
 			EasyMock.expect(this.MockedReferenceTypeFactory.fromSchema(EasyMock.capture(arg1))).andAnswer(new IAnswer<LogicalType>() {
 				@Override
 				public LogicalType answer() {
-					return new Reference(arg1.getValue());
+					return new MockReference(arg1.getValue()).MockedLogicalType;
 				}
 			});
 		}
 
 		private void MockGetTypeName() {
-			EasyMock.expect(this.MockedReferenceTypeFactory.getTypeName()).andReturn(Reference.REFERENCE);
+			EasyMock.expect(this.MockedReferenceTypeFactory.getTypeName()).andReturn(MockReference.REFERENCE);
 		}
 
 	}
@@ -211,7 +234,7 @@ public class TestCircularReferencesWithMock {
 	@BeforeClass
 	public static void addReferenceTypes() {
 		LogicalTypes.register(Referenceable.REFERENCEABLE, new MockReferenceableTypeFactory().MockedReferenceableTypeFactory);
-		LogicalTypes.register(Reference.REFERENCE, new MockReferenceTypeFactory().MockedReferenceTypeFactory);
+		LogicalTypes.register(MockReference.REFERENCE, new MockReferenceTypeFactory().MockedReferenceTypeFactory);
 	}
 
 	public static class ReferenceManager {
@@ -333,92 +356,106 @@ public class TestCircularReferencesWithMock {
 			}
 
 			private void mockGetLogicalTypeName() {
-				EasyMock.expect(this.MockedReferenceHandler.getLogicalTypeName()).andReturn(Reference.REFERENCE).anyTimes();
+				EasyMock.expect(this.MockedReferenceHandler.getLogicalTypeName()).andReturn(MockReference.REFERENCE).anyTimes();
 			}
 
 			private void mockFromRecord() {
-				final Capture<IndexedRecord> record = EasyMock.newCapture();
-				Capture<Schema> schema = EasyMock.newCapture();
-				Capture<LogicalType> type = EasyMock.newCapture();
-				EasyMock.expect(this.MockedReferenceHandler.fromRecord(EasyMock.capture(record), EasyMock.capture(schema), EasyMock.capture(type)))
-						.andAnswer(new IAnswer<IndexedRecord>() {
+				EasyMock.expect(this.MockedReferenceHandler.fromRecord(EasyMock.anyObject(IndexedRecord.class), EasyMock.anyObject(Schema.class),
+						EasyMock.anyObject(LogicalType.class))).andAnswer(new IAnswer<IndexedRecord>() {
 							@Override
 							public IndexedRecord answer() {
-								final Schema.Field refField = schema.getValue().getField(((Reference) type.getValue()).getRefFieldName());
+								final IndexedRecord record = EasyMock.getCurrentArgument(0);
+								Schema schema = EasyMock.getCurrentArgument(1);
+								LogicalType type = EasyMock.getCurrentArgument(2);
+								final Schema.Field refField = schema.getField(((Reference) type).getRefFieldName());
 
-								Long id = (Long) record.getValue().get(refField.pos());
+								Long id = (Long) record.get(refField.pos());
 								if (id != null) {
 									if (references.containsKey(id)) {
-										record.getValue().put(refField.pos(), references.get(id));
+										record.put(refField.pos(), references.get(id));
 
 									} else {
 										List<Callback> callbacks = callbacksById.computeIfAbsent(id, k -> new ArrayList<>());
 										// add a callback to resolve this
 										// reference when the id
 										// is available
-										callbacks.add(referenceable -> record.getValue().put(refField.pos(), referenceable));
+										callbacks.add(referenceable -> record.put(refField.pos(), referenceable));
 									}
 								}
 
-								return record.getValue();
+								return record;
 							}
 						}).anyTimes();
 			}
 
 			private void mockToRecord() {
-				Capture<IndexedRecord> record = EasyMock.newCapture();
-				Capture<Schema> schema = EasyMock.newCapture();
-				Capture<LogicalType> type = EasyMock.newCapture();
-				EasyMock.expect(this.MockedReferenceHandler.toRecord(EasyMock.capture(record), EasyMock.capture(schema), EasyMock.capture(type)))
-						.andAnswer(new IAnswer<IndexedRecord>() {
+
+				EasyMock.expect(this.MockedReferenceHandler.toRecord(EasyMock.anyObject(IndexedRecord.class), EasyMock.anyObject(Schema.class),
+						EasyMock.anyObject(LogicalType.class))).andAnswer(new IAnswer<IndexedRecord>() {
 							@Override
 							public IndexedRecord answer() {
+								IndexedRecord record = EasyMock.getCurrentArgument(0);
+								Schema schema = EasyMock.getCurrentArgument(1);
+								LogicalType type = EasyMock.getCurrentArgument(2);
 								// write side: replace a referenced field with
 								// its id
-								Schema.Field refField = schema.getValue().getField(((Reference) type.getValue()).getRefFieldName());
-								IndexedRecord referenced = (IndexedRecord) record.getValue().get(refField.pos());
+								Schema.Field refField = schema.getField(((Reference) type).getRefFieldName());
+								IndexedRecord referenced = (IndexedRecord) record.get(refField.pos());
 								if (referenced == null) {
-									return record.getValue();
+									return record;
 								}
 
 								// hijack the field to return the id instead of
 								// the ref
-								return new HijackingIndexedRecord(record.getValue(), refField.pos(), ids.get(referenced));
+								return new MockHijackingIndexedRecord(record, refField.pos(), ids.get(referenced)).MockedHijackingIndexedRecord;
 							}
 						}).anyTimes();
 			}
 
 		}
 
-		private static class HijackingIndexedRecord implements IndexedRecord {
+		private static class MockHijackingIndexedRecord {
+			public IndexedRecord MockedHijackingIndexedRecord;
 			private final IndexedRecord wrapped;
 			private final int index;
 			private final Object data;
 
-			public HijackingIndexedRecord(IndexedRecord wrapped, int index, Object data) {
+			public MockHijackingIndexedRecord(IndexedRecord wrapped, int index, Object data) {
+				this.MockedHijackingIndexedRecord = EasyMock.niceMock(IndexedRecord.class);
 				this.wrapped = wrapped;
 				this.index = index;
 				this.data = data;
+				mockPut();
+				mockGet();
+				mockGetSchema();
+				EasyMock.replay(this.MockedHijackingIndexedRecord);
 			}
 
-			@Override
-			public void put(int i, Object v) {
-				throw new RuntimeException("[BUG] This is a read-only class.");
+			private void mockPut() {
+				this.MockedHijackingIndexedRecord.put(EasyMock.anyInt(), EasyMock.anyObject());
+				EasyMock.expectLastCall().andAnswer(() -> {
+					throw new RuntimeException("[BUG] This is a read-only class.");
+				}).anyTimes();
 			}
 
-			@Override
-			public Object get(int i) {
-				if (i == index) {
-					return data;
-				}
-				return wrapped.get(i);
+			private void mockGet() {
+				EasyMock.expect(this.MockedHijackingIndexedRecord.get(EasyMock.anyInt())).andAnswer(() -> {
+					int i = EasyMock.getCurrentArgument(0);
+					if (i == index) {
+						return data;
+					}
+					return wrapped.get(i);
+				}).anyTimes();
 			}
 
-			@Override
-			public Schema getSchema() {
-				return wrapped.getSchema();
+			private void mockGetSchema() {
+				EasyMock.expect(this.MockedHijackingIndexedRecord.getSchema()).andAnswer(() -> {
+					return wrapped.getSchema();
+				}).anyTimes();
 			}
+
 		}
+
 	}
 
 	@Test
