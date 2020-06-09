@@ -138,71 +138,97 @@ public class TestSchemasWithMock {
 				.getJavaClassName(new Schema.Parser().parse("{\"type\": \"fixed\", \"name\": \"N\", \"size\": 10, \"namespace\": \"com.example\"}")));
 	}
 
-	private static class TestVisitor implements SchemaVisitor<String> {
+	private static class MockTestVisitor {
+		SchemaVisitor<String> MockedTestVisitor;
 		StringBuilder sb = new StringBuilder();
 
-		public SchemaVisitorAction visitTerminal(Schema terminal) {
-			sb.append(terminal);
-			return SchemaVisitorAction.CONTINUE;
+		public MockTestVisitor() {
+			this.MockedTestVisitor = EasyMock.niceMock(SchemaVisitor.class);
+			mockVisitTerminal();
+			mockVisitNonTerminal();
+			mockAfterVisitNonTerminal();
+			mockGet();
 		}
 
-		public SchemaVisitorAction visitNonTerminal(Schema nonTerminal) {
-			String n = nonTerminal.getName();
-			sb.append(n).append('.');
-			if (n.startsWith("t")) {
-				return SchemaVisitorAction.TERMINATE;
-			} else if (n.startsWith("ss")) {
-				return SchemaVisitorAction.SKIP_SIBLINGS;
-			} else if (n.startsWith("st")) {
-				return SchemaVisitorAction.SKIP_SUBTREE;
-			} else {
+		public SchemaVisitor<String> replay() {
+			EasyMock.replay(this.MockedTestVisitor);
+			return this.MockedTestVisitor;
+		}
+
+		private void mockVisitTerminal() {
+			EasyMock.expect(this.MockedTestVisitor.visitTerminal(EasyMock.anyObject(Schema.class))).andAnswer(() -> {
+				Schema terminal = EasyMock.getCurrentArgument(0);
+				sb.append(terminal);
 				return SchemaVisitorAction.CONTINUE;
-			}
+			}).anyTimes();
 		}
 
-		public SchemaVisitorAction afterVisitNonTerminal(Schema nonTerminal) {
-			sb.append("!");
-			String n = nonTerminal.getName();
-			if (n.startsWith("ct")) {
-				return SchemaVisitorAction.TERMINATE;
-			} else if (n.startsWith("css")) {
-				return SchemaVisitorAction.SKIP_SIBLINGS;
-			} else if (n.startsWith("cst")) {
-				return SchemaVisitorAction.SKIP_SUBTREE;
-			} else {
-				return SchemaVisitorAction.CONTINUE;
-			}
+		private void mockVisitNonTerminal() {
+			EasyMock.expect(this.MockedTestVisitor.visitNonTerminal(EasyMock.anyObject(Schema.class))).andAnswer(() -> {
+				Schema nonTerminal = EasyMock.getCurrentArgument(0);
+				String n = nonTerminal.getName();
+				sb.append(n).append('.');
+				if (n.startsWith("t")) {
+					return SchemaVisitorAction.TERMINATE;
+				} else if (n.startsWith("ss")) {
+					return SchemaVisitorAction.SKIP_SIBLINGS;
+				} else if (n.startsWith("st")) {
+					return SchemaVisitorAction.SKIP_SUBTREE;
+				} else {
+					return SchemaVisitorAction.CONTINUE;
+				}
+			}).anyTimes();
 		}
 
-		public String get() {
-			return sb.toString();
+		private void mockAfterVisitNonTerminal() {
+			EasyMock.expect(this.MockedTestVisitor.afterVisitNonTerminal(EasyMock.anyObject(Schema.class))).andAnswer(() -> {
+				Schema nonTerminal = EasyMock.getCurrentArgument(0);
+				sb.append("!");
+				String n = nonTerminal.getName();
+				if (n.startsWith("ct")) {
+					return SchemaVisitorAction.TERMINATE;
+				} else if (n.startsWith("css")) {
+					return SchemaVisitorAction.SKIP_SIBLINGS;
+				} else if (n.startsWith("cst")) {
+					return SchemaVisitorAction.SKIP_SUBTREE;
+				} else {
+					return SchemaVisitorAction.CONTINUE;
+				}
+			}).anyTimes();
 		}
+
+		private void mockGet() {
+			EasyMock.expect(this.MockedTestVisitor.get()).andAnswer(() -> {
+				return sb.toString();
+			}).anyTimes();
+		}
+
 	}
 
 	@Test
 	public void testVisit1() {
 		String s1 = "{\"type\": \"record\", \"name\": \"t1\", \"fields\": [" + "{\"name\": \"f1\", \"type\": \"int\"}" + "]}";
-		Assert.assertEquals("t1.", Schemas.visit(new Schema.Parser().parse(s1), new TestVisitor()));
+		Assert.assertEquals("t1.", Schemas.visit(new Schema.Parser().parse(s1), new MockTestVisitor().replay()));
 	}
 
 	@Test
 	public void testVisit2() {
 		String s2 = "{\"type\": \"record\", \"name\": \"c1\", \"fields\": [" + "{\"name\": \"f1\", \"type\": \"int\"}" + "]}";
-		Assert.assertEquals("c1.\"int\"!", Schemas.visit(new Schema.Parser().parse(s2), new TestVisitor()));
+		Assert.assertEquals("c1.\"int\"!", Schemas.visit(new Schema.Parser().parse(s2), new MockTestVisitor().replay()));
 
 	}
 
 	@Test
 	public void testVisit3() {
 		String s3 = "{\"type\": \"record\", \"name\": \"ss1\", \"fields\": [" + "{\"name\": \"f1\", \"type\": \"int\"}" + "]}";
-		Assert.assertEquals("ss1.", Schemas.visit(new Schema.Parser().parse(s3), new TestVisitor()));
+		Assert.assertEquals("ss1.", Schemas.visit(new Schema.Parser().parse(s3), new MockTestVisitor().replay()));
 
 	}
 
 	@Test
 	public void testVisit4() {
 		String s4 = "{\"type\": \"record\", \"name\": \"st1\", \"fields\": [" + "{\"name\": \"f1\", \"type\": \"int\"}" + "]}";
-		Assert.assertEquals("st1.!", Schemas.visit(new Schema.Parser().parse(s4), new TestVisitor()));
+		Assert.assertEquals("st1.!", Schemas.visit(new Schema.Parser().parse(s4), new MockTestVisitor().replay()));
 
 	}
 
@@ -211,7 +237,7 @@ public class TestSchemasWithMock {
 		String s5 = "{\"type\": \"record\", \"name\": \"c1\", \"fields\": ["
 				+ "{\"name\": \"f1\", \"type\": {\"type\": \"record\", \"name\": \"c2\", \"fields\": " + "[{\"name\": \"f11\", \"type\": \"int\"}]}},"
 				+ "{\"name\": \"f2\", \"type\": \"long\"}" + "]}";
-		Assert.assertEquals("c1.c2.\"int\"!\"long\"!", Schemas.visit(new Schema.Parser().parse(s5), new TestVisitor()));
+		Assert.assertEquals("c1.c2.\"int\"!\"long\"!", Schemas.visit(new Schema.Parser().parse(s5), new MockTestVisitor().replay()));
 
 	}
 
@@ -220,7 +246,7 @@ public class TestSchemasWithMock {
 		String s6 = "{\"type\": \"record\", \"name\": \"c1\", \"fields\": ["
 				+ "{\"name\": \"f1\", \"type\": {\"type\": \"record\", \"name\": \"ss2\", \"fields\": "
 				+ "[{\"name\": \"f11\", \"type\": \"int\"}]}}," + "{\"name\": \"f2\", \"type\": \"long\"}" + "]}";
-		Assert.assertEquals("c1.ss2.!", Schemas.visit(new Schema.Parser().parse(s6), new TestVisitor()));
+		Assert.assertEquals("c1.ss2.!", Schemas.visit(new Schema.Parser().parse(s6), new MockTestVisitor().replay()));
 
 	}
 
@@ -229,7 +255,7 @@ public class TestSchemasWithMock {
 		String s7 = "{\"type\": \"record\", \"name\": \"c1\", \"fields\": ["
 				+ "{\"name\": \"f1\", \"type\": {\"type\": \"record\", \"name\": \"css2\", \"fields\": "
 				+ "[{\"name\": \"f11\", \"type\": \"int\"}]}}," + "{\"name\": \"f2\", \"type\": \"long\"}" + "]}";
-		Assert.assertEquals("c1.css2.\"int\"!!", Schemas.visit(new Schema.Parser().parse(s7), new TestVisitor()));
+		Assert.assertEquals("c1.css2.\"int\"!!", Schemas.visit(new Schema.Parser().parse(s7), new MockTestVisitor().replay()));
 	}
 
 	@Test(expected = UnsupportedOperationException.class)
@@ -237,7 +263,7 @@ public class TestSchemasWithMock {
 		String s8 = "{\"type\": \"record\", \"name\": \"c1\", \"fields\": ["
 				+ "{\"name\": \"f1\", \"type\": {\"type\": \"record\", \"name\": \"cst2\", \"fields\": "
 				+ "[{\"name\": \"f11\", \"type\": \"int\"}]}}," + "{\"name\": \"f2\", \"type\": \"int\"}" + "]}";
-		Schemas.visit(new Schema.Parser().parse(s8), new TestVisitor());
+		Schemas.visit(new Schema.Parser().parse(s8), new MockTestVisitor().replay());
 	}
 
 	@Test
@@ -245,7 +271,72 @@ public class TestSchemasWithMock {
 		String s9 = "{\"type\": \"record\", \"name\": \"c1\", \"fields\": ["
 				+ "{\"name\": \"f1\", \"type\": {\"type\": \"record\", \"name\": \"ct2\", \"fields\": "
 				+ "[{\"name\": \"f11\", \"type\": \"int\"}]}}," + "{\"name\": \"f2\", \"type\": \"long\"}" + "]}";
-		Assert.assertEquals("c1.ct2.\"int\"!", Schemas.visit(new Schema.Parser().parse(s9), new TestVisitor()));
+		Assert.assertEquals("c1.ct2.\"int\"!", Schemas.visit(new Schema.Parser().parse(s9), new MockTestVisitor().replay()));
+	}
+
+	private static class MockTestVisitor10 {
+		SchemaVisitor<String> MockedTestVisitor;
+		StringBuilder sb = new StringBuilder();
+
+		public MockTestVisitor10() {
+			this.MockedTestVisitor = EasyMock.niceMock(SchemaVisitor.class);
+			mockVisitTerminal();
+			mockVisitNonTerminal();
+			mockAfterVisitNonTerminal();
+			mockGet();
+		}
+
+		public SchemaVisitor<String> replay() {
+			EasyMock.replay(this.MockedTestVisitor);
+			return this.MockedTestVisitor;
+		}
+
+		private void mockVisitTerminal() {
+			EasyMock.expect(this.MockedTestVisitor.visitTerminal(EasyMock.anyObject(Schema.class))).andAnswer(() -> {
+				return SchemaVisitorAction.SKIP_SUBTREE;
+			}).anyTimes();
+		}
+
+		private void mockVisitNonTerminal() {
+			EasyMock.expect(this.MockedTestVisitor.visitNonTerminal(EasyMock.anyObject(Schema.class))).andAnswer(() -> {
+				Schema nonTerminal = EasyMock.getCurrentArgument(0);
+				String n = nonTerminal.getName();
+				sb.append(n).append('.');
+				if (n.startsWith("t")) {
+					return SchemaVisitorAction.TERMINATE;
+				} else if (n.startsWith("ss")) {
+					return SchemaVisitorAction.SKIP_SIBLINGS;
+				} else if (n.startsWith("st")) {
+					return SchemaVisitorAction.SKIP_SUBTREE;
+				} else {
+					return SchemaVisitorAction.CONTINUE;
+				}
+			}).anyTimes();
+		}
+
+		private void mockAfterVisitNonTerminal() {
+			EasyMock.expect(this.MockedTestVisitor.afterVisitNonTerminal(EasyMock.anyObject(Schema.class))).andAnswer(() -> {
+				Schema nonTerminal = EasyMock.getCurrentArgument(0);
+				sb.append("!");
+				String n = nonTerminal.getName();
+				if (n.startsWith("ct")) {
+					return SchemaVisitorAction.TERMINATE;
+				} else if (n.startsWith("css")) {
+					return SchemaVisitorAction.SKIP_SIBLINGS;
+				} else if (n.startsWith("cst")) {
+					return SchemaVisitorAction.SKIP_SUBTREE;
+				} else {
+					return SchemaVisitorAction.CONTINUE;
+				}
+			}).anyTimes();
+		}
+
+		private void mockGet() {
+			EasyMock.expect(this.MockedTestVisitor.get()).andAnswer(() -> {
+				return sb.toString();
+			}).anyTimes();
+		}
+
 	}
 
 	@Test(expected = UnsupportedOperationException.class)
@@ -253,11 +344,74 @@ public class TestSchemasWithMock {
 		String s10 = "{\"type\": \"record\", \"name\": \"c1\", \"fields\": ["
 				+ "{\"name\": \"f1\", \"type\": {\"type\": \"record\", \"name\": \"ct2\", \"fields\": "
 				+ "[{\"name\": \"f11\", \"type\": \"int\"}]}}," + "{\"name\": \"f2\", \"type\": \"int\"}" + "]}";
-		Schemas.visit(new Schema.Parser().parse(s10), new TestVisitor() {
-			public SchemaVisitorAction visitTerminal(Schema terminal) {
-				return SchemaVisitorAction.SKIP_SUBTREE;
-			}
-		});
+		Schemas.visit(new Schema.Parser().parse(s10), new MockTestVisitor10().replay());
+	}
+
+	private static class MockTestVisitor11 {
+		SchemaVisitor<String> MockedTestVisitor;
+		StringBuilder sb = new StringBuilder();
+
+		public MockTestVisitor11() {
+			this.MockedTestVisitor = EasyMock.niceMock(SchemaVisitor.class);
+			mockVisitTerminal();
+			mockVisitNonTerminal();
+			mockAfterVisitNonTerminal();
+			mockGet();
+		}
+
+		public SchemaVisitor<String> replay() {
+			EasyMock.replay(this.MockedTestVisitor);
+			return this.MockedTestVisitor;
+		}
+
+		private void mockVisitTerminal() {
+			EasyMock.expect(this.MockedTestVisitor.visitTerminal(EasyMock.anyObject(Schema.class))).andAnswer(() -> {
+				Schema terminal = EasyMock.getCurrentArgument(0);
+				sb.append(terminal).append('.');
+				return SchemaVisitorAction.SKIP_SIBLINGS;
+			}).anyTimes();
+		}
+
+		private void mockVisitNonTerminal() {
+			EasyMock.expect(this.MockedTestVisitor.visitNonTerminal(EasyMock.anyObject(Schema.class))).andAnswer(() -> {
+				Schema nonTerminal = EasyMock.getCurrentArgument(0);
+				String n = nonTerminal.getName();
+				sb.append(n).append('.');
+				if (n.startsWith("t")) {
+					return SchemaVisitorAction.TERMINATE;
+				} else if (n.startsWith("ss")) {
+					return SchemaVisitorAction.SKIP_SIBLINGS;
+				} else if (n.startsWith("st")) {
+					return SchemaVisitorAction.SKIP_SUBTREE;
+				} else {
+					return SchemaVisitorAction.CONTINUE;
+				}
+			}).anyTimes();
+		}
+
+		private void mockAfterVisitNonTerminal() {
+			EasyMock.expect(this.MockedTestVisitor.afterVisitNonTerminal(EasyMock.anyObject(Schema.class))).andAnswer(() -> {
+				Schema nonTerminal = EasyMock.getCurrentArgument(0);
+				sb.append("!");
+				String n = nonTerminal.getName();
+				if (n.startsWith("ct")) {
+					return SchemaVisitorAction.TERMINATE;
+				} else if (n.startsWith("css")) {
+					return SchemaVisitorAction.SKIP_SIBLINGS;
+				} else if (n.startsWith("cst")) {
+					return SchemaVisitorAction.SKIP_SUBTREE;
+				} else {
+					return SchemaVisitorAction.CONTINUE;
+				}
+			}).anyTimes();
+		}
+
+		private void mockGet() {
+			EasyMock.expect(this.MockedTestVisitor.get()).andAnswer(() -> {
+				return sb.toString();
+			}).anyTimes();
+		}
+
 	}
 
 	@Test
@@ -266,12 +420,74 @@ public class TestSchemasWithMock {
 				+ "{\"name\": \"f1\", \"type\": {\"type\": \"record\", \"name\": \"c2\", \"fields\": "
 				+ "[{\"name\": \"f11\", \"type\": \"int\"},{\"name\": \"f12\", \"type\": \"double\"}" + "]}},"
 				+ "{\"name\": \"f2\", \"type\": \"long\"}" + "]}";
-		Assert.assertEquals("c1.c2.\"int\".!\"long\".!", Schemas.visit(new Schema.Parser().parse(s11), new TestVisitor() {
-			public SchemaVisitorAction visitTerminal(Schema terminal) {
+		Assert.assertEquals("c1.c2.\"int\".!\"long\".!", Schemas.visit(new Schema.Parser().parse(s11), new MockTestVisitor11().replay()));
+	}
+
+	private static class MockTestVisitor12 {
+		SchemaVisitor<String> MockedTestVisitor;
+		StringBuilder sb = new StringBuilder();
+
+		public MockTestVisitor12() {
+			this.MockedTestVisitor = EasyMock.niceMock(SchemaVisitor.class);
+			mockVisitTerminal();
+			mockVisitNonTerminal();
+			mockAfterVisitNonTerminal();
+			mockGet();
+		}
+
+		public SchemaVisitor<String> replay() {
+			EasyMock.replay(this.MockedTestVisitor);
+			return this.MockedTestVisitor;
+		}
+
+		private void mockVisitTerminal() {
+			EasyMock.expect(this.MockedTestVisitor.visitTerminal(EasyMock.anyObject(Schema.class))).andAnswer(() -> {
+				Schema terminal = EasyMock.getCurrentArgument(0);
 				sb.append(terminal).append('.');
-				return SchemaVisitorAction.SKIP_SIBLINGS;
-			}
-		}));
+				return SchemaVisitorAction.TERMINATE;
+			}).anyTimes();
+		}
+
+		private void mockVisitNonTerminal() {
+			EasyMock.expect(this.MockedTestVisitor.visitNonTerminal(EasyMock.anyObject(Schema.class))).andAnswer(() -> {
+				Schema nonTerminal = EasyMock.getCurrentArgument(0);
+				String n = nonTerminal.getName();
+				sb.append(n).append('.');
+				if (n.startsWith("t")) {
+					return SchemaVisitorAction.TERMINATE;
+				} else if (n.startsWith("ss")) {
+					return SchemaVisitorAction.SKIP_SIBLINGS;
+				} else if (n.startsWith("st")) {
+					return SchemaVisitorAction.SKIP_SUBTREE;
+				} else {
+					return SchemaVisitorAction.CONTINUE;
+				}
+			}).anyTimes();
+		}
+
+		private void mockAfterVisitNonTerminal() {
+			EasyMock.expect(this.MockedTestVisitor.afterVisitNonTerminal(EasyMock.anyObject(Schema.class))).andAnswer(() -> {
+				Schema nonTerminal = EasyMock.getCurrentArgument(0);
+				sb.append("!");
+				String n = nonTerminal.getName();
+				if (n.startsWith("ct")) {
+					return SchemaVisitorAction.TERMINATE;
+				} else if (n.startsWith("css")) {
+					return SchemaVisitorAction.SKIP_SIBLINGS;
+				} else if (n.startsWith("cst")) {
+					return SchemaVisitorAction.SKIP_SUBTREE;
+				} else {
+					return SchemaVisitorAction.CONTINUE;
+				}
+			}).anyTimes();
+		}
+
+		private void mockGet() {
+			EasyMock.expect(this.MockedTestVisitor.get()).andAnswer(() -> {
+				return sb.toString();
+			}).anyTimes();
+		}
+
 	}
 
 	@Test
@@ -279,22 +495,79 @@ public class TestSchemasWithMock {
 		String s12 = "{\"type\": \"record\", \"name\": \"c1\", \"fields\": ["
 				+ "{\"name\": \"f1\", \"type\": {\"type\": \"record\", \"name\": \"ct2\", \"fields\": "
 				+ "[{\"name\": \"f11\", \"type\": \"int\"}]}}," + "{\"name\": \"f2\", \"type\": \"long\"}" + "]}";
-		Assert.assertEquals("c1.ct2.\"int\".", Schemas.visit(new Schema.Parser().parse(s12), new TestVisitor() {
-			public SchemaVisitorAction visitTerminal(Schema terminal) {
+		Assert.assertEquals("c1.ct2.\"int\".", Schemas.visit(new Schema.Parser().parse(s12), new MockTestVisitor12().replay()));
+	}
+
+	private static class MockTestVisitor13 {
+		SchemaVisitor<String> MockedTestVisitor;
+		StringBuilder sb = new StringBuilder();
+
+		public MockTestVisitor13() {
+			this.MockedTestVisitor = EasyMock.niceMock(SchemaVisitor.class);
+			mockVisitTerminal();
+			mockVisitNonTerminal();
+			mockAfterVisitNonTerminal();
+			mockGet();
+		}
+
+		public SchemaVisitor<String> replay() {
+			EasyMock.replay(this.MockedTestVisitor);
+			return this.MockedTestVisitor;
+		}
+
+		private void mockVisitTerminal() {
+			EasyMock.expect(this.MockedTestVisitor.visitTerminal(EasyMock.anyObject(Schema.class))).andAnswer(() -> {
+				Schema terminal = EasyMock.getCurrentArgument(0);
 				sb.append(terminal).append('.');
-				return SchemaVisitorAction.TERMINATE;
-			}
-		}));
+				return SchemaVisitorAction.SKIP_SIBLINGS;
+			}).anyTimes();
+		}
+
+		private void mockVisitNonTerminal() {
+			EasyMock.expect(this.MockedTestVisitor.visitNonTerminal(EasyMock.anyObject(Schema.class))).andAnswer(() -> {
+				Schema nonTerminal = EasyMock.getCurrentArgument(0);
+				String n = nonTerminal.getName();
+				sb.append(n).append('.');
+				if (n.startsWith("t")) {
+					return SchemaVisitorAction.TERMINATE;
+				} else if (n.startsWith("ss")) {
+					return SchemaVisitorAction.SKIP_SIBLINGS;
+				} else if (n.startsWith("st")) {
+					return SchemaVisitorAction.SKIP_SUBTREE;
+				} else {
+					return SchemaVisitorAction.CONTINUE;
+				}
+			}).anyTimes();
+		}
+
+		private void mockAfterVisitNonTerminal() {
+			EasyMock.expect(this.MockedTestVisitor.afterVisitNonTerminal(EasyMock.anyObject(Schema.class))).andAnswer(() -> {
+				Schema nonTerminal = EasyMock.getCurrentArgument(0);
+				sb.append("!");
+				String n = nonTerminal.getName();
+				if (n.startsWith("ct")) {
+					return SchemaVisitorAction.TERMINATE;
+				} else if (n.startsWith("css")) {
+					return SchemaVisitorAction.SKIP_SIBLINGS;
+				} else if (n.startsWith("cst")) {
+					return SchemaVisitorAction.SKIP_SUBTREE;
+				} else {
+					return SchemaVisitorAction.CONTINUE;
+				}
+			}).anyTimes();
+		}
+
+		private void mockGet() {
+			EasyMock.expect(this.MockedTestVisitor.get()).andAnswer(() -> {
+				return sb.toString();
+			}).anyTimes();
+		}
+
 	}
 
 	@Test
 	public void testVisit13() {
 		String s12 = "{\"type\": \"int\"}";
-		Assert.assertEquals("\"int\".", Schemas.visit(new Schema.Parser().parse(s12), new TestVisitor() {
-			public SchemaVisitorAction visitTerminal(Schema terminal) {
-				sb.append(terminal).append('.');
-				return SchemaVisitorAction.SKIP_SIBLINGS;
-			}
-		}));
+		Assert.assertEquals("\"int\".", Schemas.visit(new Schema.Parser().parse(s12), new MockTestVisitor13().replay()));
 	}
 }
